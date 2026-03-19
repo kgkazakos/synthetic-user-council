@@ -1,0 +1,19 @@
+# Environment
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Audio files (too large, not needed for public repo)
+*.mp3
+bridge_audio/
+
+# Raw session data
+session_output.json
+bridge_output.json
+
+# macOS
+.DS_Store
