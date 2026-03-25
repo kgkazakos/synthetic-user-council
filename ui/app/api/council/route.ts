@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest } from "next/server";
 import {
   ARCHETYPES,
@@ -9,16 +9,14 @@ import {
   type Archetype,
 } from "@/lib/prompts";
 
-// Gemini model — matches the Python CLI
-const GEMINI_MODEL = "models/gemini-3.1-pro-preview";
+console.log("Route module loaded, GEMINI_API_KEY present:", !!process.env.GEMINI_API_KEY);
 
-// API key never touches the client — server route only
-function getClient(): GoogleGenAI {
+const GEMINI_MODEL = "gemini-3.1-pro-preview";
+
+function getClient(): GoogleGenerativeAI {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured");
-  }
-  return new GoogleGenAI({ apiKey });
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+  return new GoogleGenerativeAI(apiKey);
 }
 
 function encodeEvent(data: object): Uint8Array {
@@ -27,27 +25,42 @@ function encodeEvent(data: object): Uint8Array {
 
 function safeParseJSON<T>(text: string): T | null {
   try {
-    const cleaned = text
-      .replace(/^```json\n?/, "")
-      .replace(/^```\n?/, "")
-      .replace(/\n?```$/, "")
-      .trim();
-    return JSON.parse(cleaned) as T;
+    return JSON.parse(text) as T;
   } catch {
-    return null;
+    try {
+      const cleaned = text
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+      return JSON.parse(cleaned) as T;
+    } catch {
+      try {
+        const match = text.match(/\{[\s\S]*\}/);
+        if (match) return JSON.parse(match[0]) as T;
+        return null;
+      } catch {
+        console.error("JSON parse failed for text:", text.slice(0, 200));
+        return null;
+      }
+    }
   }
 }
 
-async function callGemini(client: GoogleGenAI, prompt: string): Promise<string> {
-  const response = await client.models.generateContent({
+async function callGemini(
+  client: GoogleGenerativeAI,
+  prompt: string,
+  maxTokens = 1024
+): Promise<string> {
+  const model = client.getGenerativeModel({
     model: GEMINI_MODEL,
-    contents: prompt,
-    config: {
+    generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 1024,
+      maxOutputTokens: maxTokens,
     },
   });
-  return response.text ?? "";
+  const result = await model.generateContent(prompt);
+  return result.response.text();
 }
 
 export async function POST(req: NextRequest) {
@@ -68,7 +81,11 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (!brief.researchQuestion || !brief.productContext || !brief.targetAudience) {
+  if (
+    !brief.researchQuestion ||
+    !brief.productContext ||
+    !brief.targetAudience
+  ) {
     return new Response(
       JSON.stringify({ error: "Missing required brief fields" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
@@ -88,7 +105,7 @@ export async function POST(req: NextRequest) {
           );
 
           const prompt = buildPersonaPrompt(archetype, brief);
-          const rawText = await callGemini(client, prompt);
+          const rawText = await callGemini(client, prompt, 4096);
 
           const parsed = safeParseJSON<{
             reaction: string;
@@ -96,11 +113,16 @@ export async function POST(req: NextRequest) {
             challengeToResearcher: string;
           }>(rawText);
 
+
           const personaResponse: PersonaResponse = {
             archetype: archetype as Archetype,
             reaction: parsed?.reaction ?? "Unable to generate response.",
-            keyConcern: parsed?.keyConcern ?? "",
-            challengeToResearcher: parsed?.challengeToResearcher ?? "",
+            keyConcern: parsed?.keyConcern ?? (parsed as any)?.key_concern ?? "",
+            challengeToResearcher:
+              parsed?.challengeToResearcher ??
+              (parsed as any)?.challenge_to_researcher ??
+              (parsed as any)?.challenge ??
+              "",
           };
 
           personaResponses.push(personaResponse);
@@ -118,18 +140,8 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encodeEvent({ type: "synthesis_start" }));
 
         const synthesisPrompt = buildSynthesisPrompt(brief, personaResponses);
+        const synthRaw = await callGemini(client, synthesisPrompt, 4096);
 
-        // Synthesis needs more tokens
-        const synthResponse = await client.models.generateContent({
-          model: GEMINI_MODEL,
-          contents: synthesisPrompt,
-          config: {
-            temperature: 0.5,
-            maxOutputTokens: 2048,
-          },
-        });
-
-        const synthRaw = synthResponse.text ?? "";
         const synthesis = safeParseJSON<{
           councilSummary: string;
           blindSpots: string[];
@@ -138,20 +150,21 @@ export async function POST(req: NextRequest) {
           segmentsToPrioritise: string[];
         }>(synthRaw);
 
+  
         controller.enqueue(
-          encodeEvent({
-            type: "synthesis_complete",
-            data: synthesis,
-          })
+          encodeEvent({ type: "synthesis_complete", data: synthesis })
         );
 
         controller.enqueue(encodeEvent({ type: "done" }));
       } catch (error) {
+        console.error("Council route error:", error);
         controller.enqueue(
           encodeEvent({
             type: "error",
             message:
-              error instanceof Error ? error.message : "Unknown error occurred",
+              error instanceof Error
+                ? error.message
+                : "Unknown error occurred",
           })
         );
       } finally {

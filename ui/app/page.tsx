@@ -102,10 +102,8 @@ export default function Home() {
               break;
 
             case "synthesis_complete":
-              if (event.data) {
-                setSummary(event.data as CouncilSummary);
-                setIsSynthesising(false);
-              }
+              setSummary(event.data as CouncilSummary);
+              setIsSynthesising(false);
               break;
 
             case "done":
