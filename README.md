@@ -140,6 +140,28 @@ This project is part of a portfolio exploring how AI can augment human researche
 
 ---
 
+## Web UI
+
+A browser-based interface for running council sessions without a Python environment.
+
+**Stack:** Next.js 14, TypeScript, Tailwind CSS, Google Gemini
+
+**Setup:**
+```bash
+cd ui
+cp .env.local.example .env.local
+# Add your Gemini API key to .env.local
+# Get your key at: https://aistudio.google.com/apikey
+npm install
+npm run dev
+```
+
+Open `localhost:3000`. Paste your research brief, hit **Convene the Council**, and watch each persona respond in sequence.
+
+The UI calls Gemini (gemini-3.1-pro-preview) server-side via API route — your API key never touches the client bundle.
+
+---
+
 ## Citation
 
 ```
