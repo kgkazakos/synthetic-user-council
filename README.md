@@ -158,7 +158,7 @@ npm run dev
 
 Open `localhost:3000`. Paste your research brief, hit **Convene the Council**, and watch each persona respond in sequence.
 
-The UI calls Gemini (gemini-3.1-pro-preview) server-side via API route — your API key never touches the client bundle.
+The UI calls Gemini (gemini-4-argon) server-side via API route — your API key never touches the client bundle.
 
 ---
 
