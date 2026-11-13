@@ -11,7 +11,7 @@ import {
 
 console.log("Route module loaded, GEMINI_API_KEY present:", !!process.env.GEMINI_API_KEY);
 
-const GEMINI_MODEL = "gemini-3.1-pro-preview";
+const GEMINI_MODEL = "gemini-4-argon";
 
 function getClient(): GoogleGenerativeAI {
   const apiKey = process.env.GEMINI_API_KEY;
